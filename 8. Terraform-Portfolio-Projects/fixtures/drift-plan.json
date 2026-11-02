@@ -1,0 +1,35 @@
+{
+  "resource_drift": [
+    {
+      "address": "aws_vpc_security_group_ingress_rule.application",
+      "change": {
+        "before": {
+          "cidr_ipv4": "0.0.0.0/0"
+        },
+        "after": {
+          "cidr_ipv4": "10.90.0.0/16"
+        }
+      }
+    }
+  ],
+  "resource_changes": [
+    {
+      "address": "aws_vpc_security_group_ingress_rule.application",
+      "type": "aws_vpc_security_group_ingress_rule",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "cidr_ipv4": "10.90.0.0/16"
+        },
+        "after": {
+          "cidr_ipv4": "0.0.0.0/0",
+          "ip_protocol": "tcp",
+          "from_port": 443,
+          "to_port": 443
+        }
+      }
+    }
+  ]
+}

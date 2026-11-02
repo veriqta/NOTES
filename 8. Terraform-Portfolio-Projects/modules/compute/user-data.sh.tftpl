@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+cat > /etc/veriqta.env <<'ENV'
+AWS_DEFAULT_REGION=${region}
+SECRET_ARN=${secret_arn}
+DB_HOST=${db_host}
+ENV
+chmod 600 /etc/veriqta.env
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CONFIG'
+{"agent":{"omit_hostname":true},"metrics":{"namespace":"Veriqta/Portfolio","append_dimensions":{"AutoScalingGroupName":"$${aws:AutoScalingGroupName}"},"metrics_collected":{"mem":{"measurement":["mem_used_percent"]}}},"logs":{"logs_collected":{"files":{"collect_list":[{"file_path":"/var/log/veriqta/app.log","log_group_name":"${log_group}","log_stream_name":"{instance_id}"}]}}}}
+CONFIG
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+systemctl enable --now veriqta-api

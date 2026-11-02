@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+dnf install -y squid
+cat > /etc/squid/squid.conf <<'CONFIG'
+acl allowed_domains dstdomain ${domains}
+acl SSL_ports port 443
+acl Safe_ports port 80 443
+acl CONNECT method CONNECT
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow allowed_domains
+http_access deny all
+http_port 3128
+CONFIG
+systemctl enable --now squid

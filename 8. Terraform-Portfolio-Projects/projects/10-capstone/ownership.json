@@ -1,0 +1,64 @@
+{
+  "stacks": [
+    {
+      "id": "01-backend",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/01-backend/terraform.tfstate",
+      "recovery_order": 1,
+      "environment": "dev"
+    },
+    {
+      "id": "02-landing-zone",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/02-landing-zone/terraform.tfstate",
+      "recovery_order": 2,
+      "environment": "dev"
+    },
+    {
+      "id": "03-egress",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/03-egress/terraform.tfstate",
+      "recovery_order": 3,
+      "environment": "dev"
+    },
+    {
+      "id": "04-application",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/04-application/terraform.tfstate",
+      "recovery_order": 4,
+      "environment": "dev"
+    },
+    {
+      "id": "06-delivery",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/06-delivery/terraform.tfstate",
+      "recovery_order": 5,
+      "environment": "dev"
+    },
+    {
+      "id": "07-recovery",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/07-recovery/terraform.tfstate",
+      "recovery_order": 6,
+      "environment": "dev"
+    },
+    {
+      "id": "08-drift",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/08-drift/terraform.tfstate",
+      "recovery_order": 7,
+      "environment": "dev"
+    },
+    {
+      "id": "09-cost",
+      "owner": "veriqta-platform",
+      "state_key": "environments/dev/09-cost/terraform.tfstate",
+      "recovery_order": 8,
+      "environment": "dev"
+    }
+  ],
+  "freeze": {
+    "enabled": true,
+    "reason": "Compound incident drill: ordinary applies remain paused until reviewed"
+  }
+}

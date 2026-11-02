@@ -1,0 +1,9 @@
+bucket = "replace-with-project-01-output"
+key = "environments/dev/terraform.tfstate"
+region = "us-east-1"
+encrypt = true
+kms_key_id = "replace-with-project-01-kms-key-arn"
+use_lockfile = true
+# Supply identity through SSO, OIDC or an approved assumed-role profile, never here.
+
+workspace_key_prefix = "environments/dev/workspaces"

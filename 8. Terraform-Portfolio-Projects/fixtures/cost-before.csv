@@ -1,0 +1,6 @@
+service,currency,period_days,cost
+Compute,USD,30,310.00
+RDS,USD,30,290.00
+NAT,USD,30,86.50
+Cross-AZ,USD,30,50.00
+Other,USD,30,80.00

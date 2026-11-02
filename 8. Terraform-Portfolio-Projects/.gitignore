@@ -1,0 +1,13 @@
+.terraform/
+*.tfstate*
+*.tfplan
+*.auto.tfvars
+*.tfvars
+!*.tfvars.example
+*.hcl.private
+.private/
+artifacts/
+__pycache__/
+*.pyc
+.env
+*.tfvars.json
