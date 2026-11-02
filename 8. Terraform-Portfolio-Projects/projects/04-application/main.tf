@@ -1,3 +1,7 @@
+variable "final_snapshot_suffix" {
+  type    = string
+  default = "retained"
+}
 variable "database_engine_version" {
   type    = string
   default = null
@@ -24,6 +28,7 @@ module "network" {
   interface_services = ["ssm", "ssmmessages", "logs", "secretsmanager", "monitoring", "ec2"]
 }
 resource "aws_kms_key" "data" {
+  lifecycle { prevent_destroy = true }
   description             = "Veriqta database and managed-secret key"
   enable_key_rotation     = true
   deletion_window_in_days = 30
@@ -37,6 +42,7 @@ module "database" {
   kms_key_arn                = aws_kms_key.data.arn
   deletion_protection        = var.deletion_protection
   engine_version             = var.database_engine_version
+  final_snapshot_suffix      = var.final_snapshot_suffix
 }
 module "compute" {
   source                     = "../../modules/compute"

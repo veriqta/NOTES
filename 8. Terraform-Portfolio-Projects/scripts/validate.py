@@ -4,6 +4,9 @@ from pathlib import Path
 import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 TF=os.environ.get('TERRAFORM','terraform')
+cache=Path(os.environ.get('TF_PLUGIN_CACHE_DIR',str(Path.home()/'.cache/veriqta/terraform/providers'))).expanduser()
+cache.mkdir(parents=True,exist_ok=True)
+os.environ['TF_PLUGIN_CACHE_DIR']=str(cache)
 def run(args,cwd=ROOT):
     subprocess.run(args,cwd=cwd,check=True)
 run([TF,'fmt','-recursive','-check'])

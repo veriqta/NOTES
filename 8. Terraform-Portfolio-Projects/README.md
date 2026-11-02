@@ -1306,7 +1306,7 @@ tf 08-drift apply "$BOOK/artifacts/drift-destroy.tfplan"
 
 1. Remove temporary DNS failover records before deleting targets. Destroy `07-recovery/recovered-app` before its readiness network.
 2. Decide whether the restored database should be adopted or removed. It is not owned by the recovered-app Terraform root. To delete it intentionally, disable its deletion protection, take the required final snapshot, and retain the identifier/owner. Do not expect Terraform to delete a manually restored DB automatically.
-3. For the Project 4 database, set `deletion_protection=false`, plan/apply that change, then create a separate destroy plan. The database module requires a final snapshot. Its default suffix is `retained`; if that final-snapshot name already exists, use a unique `final_snapshot_suffix` in the module configuration before destroying. Do not disable snapshots simply to bypass a naming collision.
+3. For the Project 4 database, set `deletion_protection=false` and choose a unique `final_snapshot_suffix` in its root inputs, then plan/apply that change while the full application configuration is present. The database requires a final snapshot. The data key has `prevent_destroy` so a whole-root destroy intentionally fails instead of scheduling deletion of a key needed by that snapshot. Use the key-retaining retirement procedure below. Do not disable snapshots or remove key protection simply to bypass a teardown error.
 4. Remove application fleets, ALBs, optional NAT/proxy instances, and project networks after their dependents. Remove platform environment roots separately. Verify no ENIs still reference a subnet/security group before diagnosing a deletion failure.
 5. Remove copied recovery points and S3 object versions only under the approved retention policy. Nonempty versioned buckets and backup vaults intentionally resist deletion. Governance-locked archive versions must remain until retention permits deletion unless a separately authorized bypass process is invoked. Do not put bypass commands in routine teardown.
 6. Disable backup schedules before removing vaults. Retained snapshots, AMI backing snapshots, logs, keys pending deletion, and recovery copies need owners and cost tracking. Deregister only the private lab AMIs you no longer need, then remove their unreferenced backing snapshots through a reviewed operation.
@@ -1314,6 +1314,32 @@ tf 08-drift apply "$BOOK/artifacts/drift-destroy.tfplan"
 8. Retain shared security services and organization audit logging according to organization policy. Do not disable an organization's detectors or close accounts as a side effect of a learning exercise. Account vending and backend resources have explicit destruction protection.
 9. Archive/migrate all remaining states before considering backend removal. The backend's `prevent_destroy` is intentional. Removing it requires a separate reviewed retirement change; verify no other roots or retained archives still need the bucket/key. A scheduled KMS key deletion can make retained data unrecoverable.
 10. Inspect the account inventory and later billing reports. A successful Terraform destroy covers resources in that state, not manually created builders, restored databases, previous state files, retained snapshots, or resources owned by another root.
+
+### Retire application resources while keeping snapshot keys
+
+Use a reviewed retirement change in version control. First complete the database deletion-protection/final-snapshot preparation above and export restricted state evidence. The retained-key example preserves the same key resource address and settings. Replace only the application root's `main.tf` with that example; keep `versions.tf`, backend configuration, and the existing state intact:
+
+```bash
+cp "$BOOK/projects/04-application/main.tf" "$BOOK/.private/04-original-main.tf"
+cp "$BOOK/projects/04-application/terraform.tfvars" "$BOOK/.private/04-original.tfvars"
+cp "$BOOK/examples/retain-application-key.tf.example" "$BOOK/projects/04-application/main.tf"
+cat > "$BOOK/projects/04-application/terraform.tfvars" <<EOF
+account_id = "$ACCOUNT_ID"
+region = "$AWS_REGION"
+name = "veriqta-app"
+EOF
+
+tf 04-application plan -out="$BOOK/artifacts/application-retirement.tfplan"
+tf 04-application show "$BOOK/artifacts/application-retirement.tfplan"
+# Expect application/network/database deletions and no deletion or replacement of aws_kms_key.data.
+tf 04-application apply "$BOOK/artifacts/application-retirement.tfplan"
+```
+
+If you used a JSON tfvars file instead, archive that file privately and replace it with the same minimal account/Region/name inputs; do not leave two conflicting tfvars files. Preserve any nondefault `environment` input and other provider identity settings. Verify the final snapshot exists, is available, and reports the retained key. The small remaining root continues to manage that key. Do not restore the original application configuration and apply it unless you intend to recreate the application.
+
+For Project 7, first remove its recovered application and restored database or transfer their ownership deliberately. Clear only recovery points and bucket versions whose approved retention has ended. If snapshots still need the recovery keys, `examples/retain-recovery-keys.tf.example` provides the analogous key-only `main.tf` for that root. Keep its existing primary/recovery providers, original names/Regions, state and backend. Reduce its tfvars to the still-declared account, Region, recovery Region, name, and environment inputs; review the removal plan carefully. Keep the full readiness configuration if its buckets or vaults must remain managed. A key-only retirement file is appropriate only after those data resources can be retired.
+
+Record owners for the retained keys and every snapshot or recovered database that still uses them. Remove key protection and schedule deletion only in a later reviewed change after proving that no retained data, secret, backup, or other workload needs the key. A key pending deletion can prevent decryption before its final deletion date.
 
 ### Troubleshooting reference
 
@@ -1515,6 +1541,36 @@ moved {
   from = aws_db_instance.main
   to = aws_db_instance.this
 }
+````
+
+### [examples/retain-application-key.tf.example](examples/retain-application-key.tf.example)
+
+````hcl
+resource "aws_kms_key" "data" {
+  description             = "Veriqta database and managed-secret key"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  lifecycle { prevent_destroy = true }
+}
+output "kms_key_arn" { value = aws_kms_key.data.arn }
+````
+
+### [examples/retain-recovery-keys.tf.example](examples/retain-recovery-keys.tf.example)
+
+````hcl
+resource "aws_kms_key" "primary" {
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  lifecycle { prevent_destroy = true }
+}
+resource "aws_kms_key" "dr" {
+  provider                = aws.dr
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  lifecycle { prevent_destroy = true }
+}
+output "primary_kms_key_arn" { value = aws_kms_key.primary.arn }
+output "recovery_kms_key_arn" { value = aws_kms_key.dr.arn }
 ````
 
 ### [fixtures/change-records.json](fixtures/change-records.json)
@@ -3311,6 +3367,10 @@ locals {
 ### [projects/04-application/main.tf](projects/04-application/main.tf)
 
 ````hcl
+variable "final_snapshot_suffix" {
+  type    = string
+  default = "retained"
+}
 variable "database_engine_version" {
   type    = string
   default = null
@@ -3337,6 +3397,7 @@ module "network" {
   interface_services = ["ssm", "ssmmessages", "logs", "secretsmanager", "monitoring", "ec2"]
 }
 resource "aws_kms_key" "data" {
+  lifecycle { prevent_destroy = true }
   description             = "Veriqta database and managed-secret key"
   enable_key_rotation     = true
   deletion_window_in_days = 30
@@ -3350,6 +3411,7 @@ module "database" {
   kms_key_arn                = aws_kms_key.data.arn
   deletion_protection        = var.deletion_protection
   engine_version             = var.database_engine_version
+  final_snapshot_suffix      = var.final_snapshot_suffix
 }
 module "compute" {
   source                     = "../../modules/compute"
@@ -3707,10 +3769,12 @@ variable "recovery_data_verified" {
   default = false
 }
 resource "aws_kms_key" "primary" {
+  lifecycle { prevent_destroy = true }
   enable_key_rotation     = true
   deletion_window_in_days = 30
 }
 resource "aws_kms_key" "dr" {
+  lifecycle { prevent_destroy = true }
   provider                = aws.dr
   enable_key_rotation     = true
   deletion_window_in_days = 30
@@ -4612,6 +4676,9 @@ from pathlib import Path
 import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 TF=os.environ.get('TERRAFORM','terraform')
+cache=Path(os.environ.get('TF_PLUGIN_CACHE_DIR',str(Path.home()/'.cache/veriqta/terraform/providers'))).expanduser()
+cache.mkdir(parents=True,exist_ok=True)
+os.environ['TF_PLUGIN_CACHE_DIR']=str(cache)
 def run(args,cwd=ROOT):
     subprocess.run(args,cwd=cwd,check=True)
 run([TF,'fmt','-recursive','-check'])
