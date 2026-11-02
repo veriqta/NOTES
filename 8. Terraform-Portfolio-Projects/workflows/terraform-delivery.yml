@@ -1,0 +1,112 @@
+# Teaching example: install deliberately in a separate lab repository after configuring Project 06.
+name: Veriqta reviewed Terraform delivery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: terraform-dev-drift
+  cancel-in-progress: false
+# This workflow targets ONLY Project 08's lab state. Other stacks need their own roles and keys.
+env:
+  TF_IN_AUTOMATION: 'true'
+  AWS_REGION: us-east-1
+  BOOK: '8. Terraform-Portfolio-Projects'
+  STACK: '8. Terraform-Portfolio-Projects/projects/08-drift'
+  STATE_KEY: environments/dev/08-drift/terraform.tfstate
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Prepare backend and nonsecret inputs
+        env:
+          STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          STATE_KMS_KEY: ${{ vars.TF_STATE_KMS_KEY_ARN }}
+          ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+        run: |
+          python3 - <<'PYCODE'
+          import json,os,pathlib
+          stack=pathlib.Path(os.environ['STACK'])
+          (stack/'backend.tf').write_text('terraform {\n backend "s3" {}\n}\n')
+          (stack/'backend.hcl.private').write_text('\n'.join(f'{k} = {json.dumps(v)}' for k,v in {
+              'bucket':os.environ['STATE_BUCKET'],'key':os.environ['STATE_KEY'],
+              'region':os.environ['AWS_REGION'],'kms_key_id':os.environ['STATE_KMS_KEY'],'workspace_key_prefix':'environments/dev/workspaces'}.items())+'\nencrypt = true\nuse_lockfile = true\n')
+          (stack/'terraform.tfvars.json').write_text(json.dumps({'account_id':os.environ['ACCOUNT_ID'],'name':'veriqta-drift','approved_cidr':'10.90.0.0/16'}))
+          PYCODE
+          terraform -chdir="$STACK" init -input=false -backend-config=backend.hcl.private
+          terraform -chdir="$STACK" validate
+          terraform -chdir="$STACK" plan -input=false -lock-timeout=5m -out=reviewed.tfplan
+          terraform -chdir="$STACK" show -json reviewed.tfplan > "$STACK/reviewed.json"
+          python3 "$BOOK/scripts/plan_guard.py" "$STACK/reviewed.json"
+          mkdir -p payload
+          cp "$STACK/reviewed.tfplan" "$STACK/backend.tf" "$STACK/backend.hcl.private" "$STACK/terraform.tfvars.json" "$STACK/.terraform.lock.hcl" payload/
+          python3 - <<'PYCODE'
+          import json,os,datetime,pathlib
+          pathlib.Path('payload/metadata.json').write_text(json.dumps({'commit':os.environ['GITHUB_SHA'],'state_key':os.environ['STATE_KEY'],'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat()}))
+          PYCODE
+          # Store plan JSON as a restricted artifact; it can contain sensitive values.
+          cp "$STACK/reviewed.json" payload/
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: reviewed-plan-${{ github.run_id }}
+          path: payload/
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+  apply:
+    needs: plan
+    environment: terraform-production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.plan.outputs.artifact_id }}
+          merge-multiple: true
+          path: payload
+      - name: Incident and freshness gates
+        env:
+          APPLY_FREEZE: ${{ vars.TF_APPLY_FREEZE }}
+        run: |
+          # Missing or unexpected freeze configuration fails closed.
+          test "$APPLY_FREEZE" = "false"
+          python3 - <<'PYCODE'
+          import pathlib
+          pathlib.Path('payload/freeze.json').write_text('{"enabled":false}')
+          PYCODE
+          python3 "$BOOK/scripts/recovery_gate.py" payload/metadata.json payload/freeze.json "$GITHUB_SHA" "$STATE_KEY"
+          python3 "$BOOK/scripts/plan_guard.py" payload/reviewed.json
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Apply the approved saved plan
+        run: |
+          cp payload/backend.tf payload/backend.hcl.private payload/terraform.tfvars.json payload/.terraform.lock.hcl payload/reviewed.tfplan "$STACK/"
+          terraform -chdir="$STACK" init -input=false -lockfile=readonly -backend-config=backend.hcl.private
+          terraform -chdir="$STACK" apply -input=false -lock-timeout=5m reviewed.tfplan

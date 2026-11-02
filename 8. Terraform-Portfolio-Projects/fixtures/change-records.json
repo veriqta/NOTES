@@ -1,0 +1,6 @@
+{
+  "aws_vpc_security_group_ingress_rule.application": {
+    "classification": "approved emergency change",
+    "evidence": "Example incident INC-042: responder restricted the application CIDR; update the reviewed configuration before applying."
+  }
+}

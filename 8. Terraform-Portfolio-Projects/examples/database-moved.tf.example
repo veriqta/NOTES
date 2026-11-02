@@ -1,0 +1,4 @@
+moved {
+  from = aws_db_instance.main
+  to = aws_db_instance.this
+}
