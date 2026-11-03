@@ -1,0 +1,13 @@
+resource "aws_kms_key" "primary" {
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  lifecycle { prevent_destroy = true }
+}
+resource "aws_kms_key" "dr" {
+  provider                = aws.dr
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  lifecycle { prevent_destroy = true }
+}
+output "primary_kms_key_arn" { value = aws_kms_key.primary.arn }
+output "recovery_kms_key_arn" { value = aws_kms_key.dr.arn }

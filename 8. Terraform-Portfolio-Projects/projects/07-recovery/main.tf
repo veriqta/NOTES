@@ -22,10 +22,12 @@ variable "recovery_data_verified" {
   default = false
 }
 resource "aws_kms_key" "primary" {
+  lifecycle { prevent_destroy = true }
   enable_key_rotation     = true
   deletion_window_in_days = 30
 }
 resource "aws_kms_key" "dr" {
+  lifecycle { prevent_destroy = true }
   provider                = aws.dr
   enable_key_rotation     = true
   deletion_window_in_days = 30
