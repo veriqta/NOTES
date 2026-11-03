@@ -1,0 +1,16 @@
+groups:
+  - name: veriqta-slo
+    rules:
+      - alert: CheckoutFastBurn
+        expr: |
+          (sum(rate(veriqta_http_requests_total{service="checkout",route="/checkout",status=~"5.."}[5m])) / clamp_min(sum(rate(veriqta_http_requests_total{service="checkout",route="/checkout"}[5m])),0.001) > 0.0144)
+          and
+          (sum(rate(veriqta_http_requests_total{service="checkout",route="/checkout",status=~"5.."}[1m])) / clamp_min(sum(rate(veriqta_http_requests_total{service="checkout",route="/checkout"}[1m])),0.001) > 0.0144)
+        for: 1m
+        labels: {severity: page, service: checkout, owner: veriqta-platform}
+        annotations: {summary: 'Checkout is burning a 99.9% availability budget faster than 14.4x'}
+      - alert: CheckoutTelemetryAbsent
+        expr: absent_over_time(veriqta_http_requests_total{service="checkout"}[5m])
+        for: 1m
+        labels: {severity: ticket, service: checkout}
+        annotations: {summary: 'Checkout telemetry is absent; release evidence is unavailable'}

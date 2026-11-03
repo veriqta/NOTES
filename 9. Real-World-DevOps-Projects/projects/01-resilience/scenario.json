@@ -1,0 +1,12 @@
+{
+  "state": {
+    "attempts": 2,
+    "last_attempt": 0
+  },
+  "observed": {
+    "dependency_healthy": false,
+    "ready": 1,
+    "minimum_ready": 2,
+    "crash_loop": true
+  }
+}

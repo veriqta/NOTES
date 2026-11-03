@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: veriqta
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      serviceAccountName: veriqta-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: worker
+        image: veriqta9-app:local
+        env:
+        - name: SERVICE_NAME
+          value: checkout
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: veriqta-config
+              key: DB_HOST
+        - name: DB_SECRET_ARN
+          valueFrom:
+            configMapKeyRef:
+              name: veriqta-config
+              key: DB_SECRET_ARN
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel.monitoring:4318
+        - name: RELEASE
+          value: v1
+        - name: QUEUE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: veriqta-config
+              key: QUEUE_URL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        command:
+        - python
+        - -m
+        - application.worker
+      volumes:
+      - name: tmp
+        emptyDir: {}

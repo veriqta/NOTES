@@ -1,0 +1,12 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: veriqta-app, namespace: argocd}
+spec:
+  project: veriqta
+  source:
+    repoURL: https://github.com/YOUR-ORGANIZATION/YOUR-LAB-GITOPS.git
+    targetRevision: main
+    path: kubernetes
+  destination: {server: 'https://kubernetes.default.svc', namespace: veriqta}
+  syncPolicy:
+    syncOptions: [CreateNamespace=true]

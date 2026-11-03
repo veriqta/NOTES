@@ -1,0 +1,15 @@
+schemaVersion: '0.3'
+description: Veriqta approved read-only database diagnosis
+assumeRole: '{{ AutomationAssumeRole }}'
+parameters:
+  AutomationAssumeRole: {type: String, description: Approved diagnostic execution role}
+  DatabaseIdentifier: {type: String, allowedPattern: '^veriqta-[a-z0-9-]+$'}
+mainSteps:
+  - name: inspect
+    action: aws:executeAwsApi
+    inputs:
+      Service: rds
+      Api: DescribeDBInstances
+      DBInstanceIdentifier: '{{ DatabaseIdentifier }}'
+    outputs:
+      - {Name: Status, Selector: '$.DBInstances[0].DBInstanceStatus', Type: String}

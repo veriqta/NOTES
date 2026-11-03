@@ -1,0 +1,7 @@
+{
+  "name": "veriqta-orders",
+  "owner": "group:default/veriqta-platform",
+  "environment": "dev",
+  "cpu_millicores": 250,
+  "memory_mib": 256
+}

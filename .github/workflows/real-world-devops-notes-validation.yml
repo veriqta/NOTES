@@ -1,0 +1,48 @@
+name: Real-world DevOps handbook checks
+on:
+  push:
+    branches: ['codex/09-real-world-devops-handbook']
+    paths: ['9. Real-World-DevOps-Projects/**', '.github/workflows/real-world-devops-notes-validation.yml']
+  pull_request:
+    paths: ['9. Real-World-DevOps-Projects/**', '.github/workflows/real-world-devops-notes-validation.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6
+        env: {POSTGRES_USER: veriqta, POSTGRES_PASSWORD: local-ci-test-only, POSTGRES_DB: veriqta}
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U veriqta -d veriqta" --health-interval 5s --health-retries 10
+    defaults:
+      run: {working-directory: '9. Real-World-DevOps-Projects'}
+    env:
+      TEST_DATABASE_URL: postgresql://veriqta:local-ci-test-only@127.0.0.1:5432/veriqta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: 1.13.5, terraform_wrapper: false}
+      - run: pip install -r requirements.lock.txt
+      - run: pip install --no-deps -e .
+      - run: python scripts/validate.py
+      - name: Test Rego policy rules
+        run: |
+          curl -fsSL https://openpolicyagent.org/downloads/v1.0.1/opa_linux_amd64_static -o /tmp/opa
+          chmod +x /tmp/opa
+          /tmp/opa test policies -v
+      - name: Build and smoke-test the disposable Compose application
+        run: |
+          python scripts/init_lab.py
+          python scripts/lab.py up -d primary recovery
+          python scripts/lab.py build gateway
+          python scripts/lab.py run --rm --no-deps gateway python -c 'from application.db import initialize; initialize()'
+          python scripts/lab.py up -d gateway checkout payment inventory worker
+          python scripts/compose_smoke.py
+          python scripts/compose_recovery.py
+      - name: Remove local test containers and volumes
+        if: always()
+        run: python scripts/lab.py down -v --remove-orphans

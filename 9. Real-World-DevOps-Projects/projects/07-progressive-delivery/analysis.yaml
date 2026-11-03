@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: checkout-slo
+  namespace: veriqta-release
+spec:
+  args:
+  - name: canary-hash
+  metrics:
+  - name: request-evidence
+    interval: 30s
+    count: 3
+    inconclusiveLimit: 1
+    successCondition: len(result) == 1 && result[0] >= 100
+    provider:
+      prometheus:
+        address: http://prometheus-operated.monitoring.svc:9090
+        query: sum(increase(veriqta_http_requests_total{service="checkout",route="/checkout",release="{{args.canary-hash}}"}[2m]))
+  - name: error-rate
+    interval: 30s
+    count: 3
+    failureLimit: 0
+    inconclusiveLimit: 1
+    successCondition: len(result) == 1 && result[0] <= 0.01
+    failureCondition: len(result) == 1 && result[0] > 0.01
+    provider:
+      prometheus:
+        address: http://prometheus-operated.monitoring.svc:9090
+        query: (sum(increase(veriqta_http_requests_total{service="checkout",route="/checkout",release="{{args.canary-hash}}",status=~"5.."}[2m]))
+          or vector(0)) / sum(increase(veriqta_http_requests_total{service="checkout",route="/checkout",release="{{args.canary-hash}}"}[2m]))
+  - name: p95
+    interval: 30s
+    count: 3
+    failureLimit: 0
+    inconclusiveLimit: 1
+    successCondition: len(result) == 1 && result[0] <= 0.5
+    failureCondition: len(result) == 1 && result[0] > 0.5
+    provider:
+      prometheus:
+        address: http://prometheus-operated.monitoring.svc:9090
+        query: histogram_quantile(0.95,sum by(le)(rate(veriqta_http_duration_seconds_bucket{service="checkout",route="/checkout",release="{{args.canary-hash}}"}[2m])))

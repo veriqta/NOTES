@@ -1,0 +1,18 @@
+app: {title: Veriqta Developer Portal, baseUrl: 'http://localhost:3000'}
+backend:
+  baseUrl: http://localhost:7007
+  listen: {port: 7007}
+  cors: {origin: 'http://localhost:3000', credentials: true}
+  database:
+    client: pg
+    connection: ${BACKSTAGE_DATABASE_URL}
+integrations:
+  github:
+    - host: github.com
+      token: ${BACKSTAGE_GITHUB_TOKEN}
+catalog:
+  rules: [{allow: [Component, System, API, Resource, Location, Template, Group, User]}]
+  locations:
+    - type: file
+      target: ../../veriqta-template/backstage-template.yaml
+permission: {enabled: true}

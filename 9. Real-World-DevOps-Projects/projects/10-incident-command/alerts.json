@@ -1,0 +1,18 @@
+[
+  {
+    "event_id": "veriqta-app-1",
+    "service": "checkout",
+    "dependency": "postgres",
+    "environment": "lab",
+    "burn_rate": 20,
+    "impact": "checkout failures"
+  },
+  {
+    "event_id": "veriqta-db-1",
+    "service": "checkout",
+    "dependency": "postgres",
+    "environment": "lab",
+    "burn_rate": 20,
+    "impact": "database saturation"
+  }
+]
