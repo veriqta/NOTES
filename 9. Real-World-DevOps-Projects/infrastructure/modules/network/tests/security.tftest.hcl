@@ -26,3 +26,14 @@ run "nat_does_not_open_egress" {
     error_message = "Per-AZ NAT must not bypass workload egress restrictions."
   }
 }
+
+run "ecr_layers_are_readable" {
+  command = plan
+  variables {
+    interface_services = ["ssm", "ssmmessages", "ecr.api", "ecr.dkr"]
+  }
+  assert {
+    condition     = anytrue([for s in jsondecode(aws_vpc_endpoint.gateway["s3"].policy).Statement : s.Sid == "ECRLayers" && s.Action == "s3:GetObject"])
+    error_message = "ECR pulls require the regional AWS-owned S3 image-layer bucket."
+  }
+}

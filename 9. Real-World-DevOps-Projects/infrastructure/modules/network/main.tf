@@ -140,8 +140,14 @@ resource "aws_vpc_endpoint" "gateway" {
   service_name      = "com.amazonaws.${data.aws_region.current.region}.${each.key}"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [for rt in aws_route_table.private : rt.id]
-  policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = "*", Action = "*", Resource = "*", Condition = { StringEquals = { "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id }
-  } }] })
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      { Sid = "AccountRequests", Effect = "Allow", Principal = "*", Action = "*", Resource = "*", Condition = { StringEquals = { "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id } } }
+      ], each.key == "s3" && contains(var.interface_services, "ecr.dkr") ? [
+      { Sid = "ECRLayers", Effect = "Allow", Principal = "*", Action = "s3:GetObject", Resource = "arn:aws:s3:::prod-${data.aws_region.current.region}-starport-layer-bucket/*" }
+    ] : [])
+  })
 }
 resource "aws_vpc_endpoint" "interface" {
   for_each            = var.interface_services

@@ -215,6 +215,8 @@ The node group starts with three On-Demand nodes and allows growth to nine. Its 
 
 The node role carries EKS worker, ECR read, and CNI permissions for the lab. Before production, move CNI permissions to a dedicated add-on identity, test network-policy enforcement, and harden node/pod access boundaries. EKS's own cluster security group can permit traffic in addition to the shared workload group; do not describe this cluster as an arbitrary-egress-denying network solely because one attached group has narrow rules.
 
+The S3 gateway policy includes a narrowly scoped `GetObject` permission for ECR's regional `prod-REGION-starport-layer-bucket` when ECR endpoints are enabled. Container layers come from this AWS-owned bucket; allowing only requests from the customer account can otherwise block image downloads even though ECR authentication succeeds. See [AWS ECR endpoint requirements](https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html).
+
 ### Configure the application without exposing its secret
 
 Build and publish an application image only through the deliberately installed release workflow in Project 02. No registry publication is needed for the local lab. Use a reviewed image digest for a cloud deployment.
@@ -1176,23 +1178,35 @@ async def ledger(request:Request):
 ````python
 import json
 import os
-import time
 from functools import lru_cache
 from pathlib import Path
 import boto3
+from botocore.config import Config
+import psycopg
 from psycopg.conninfo import make_conninfo
 from psycopg_pool import ConnectionPool
 
 @lru_cache(maxsize=1)
+def secrets_client():
+    return boto3.client('secretsmanager',config=Config(connect_timeout=3,read_timeout=3,retries={'max_attempts':2}))
+
+class SecretConnection(psycopg.Connection):
+    @classmethod
+    def connect(cls,conninfo='',**kwargs):
+        # Each new pooled connection reads the current managed password. Passwords are not cached in the pool's connection string.
+        secret=json.loads(secrets_client().get_secret_value(SecretId=os.environ['DB_SECRET_ARN'])['SecretString'])
+        return super().connect(make_conninfo(conninfo,user=secret['username'],password=secret['password']),**kwargs)
+
+@lru_cache(maxsize=1)
 def pool():
+    connection_class=psycopg.Connection
     if os.getenv('DATABASE_URL'):
         conninfo=os.environ['DATABASE_URL']
     else:
-        secret=json.loads(boto3.client('secretsmanager').get_secret_value(SecretId=os.environ['DB_SECRET_ARN'])['SecretString'])
-        conninfo=make_conninfo(host=os.environ['DB_HOST'],dbname='veriqta',user=secret['username'],
-                              password=secret['password'],sslmode='verify-full',
+        conninfo=make_conninfo(host=os.environ['DB_HOST'],dbname='veriqta',sslmode='verify-full',
                               sslrootcert='/app/rds-ca.pem',connect_timeout=3)
-    return ConnectionPool(conninfo,min_size=1,max_size=int(os.getenv('POOL_SIZE','5')),
+        connection_class=SecretConnection
+    return ConnectionPool(conninfo,connection_class=connection_class,min_size=1,max_size=int(os.getenv('POOL_SIZE','5')),
                           timeout=2,kwargs={'options':'-c statement_timeout=3000 -c lock_timeout=1500'})
 
 def initialize():
@@ -2752,8 +2766,14 @@ resource "aws_vpc_endpoint" "gateway" {
   service_name      = "com.amazonaws.${data.aws_region.current.region}.${each.key}"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [for rt in aws_route_table.private : rt.id]
-  policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Allow", Principal = "*", Action = "*", Resource = "*", Condition = { StringEquals = { "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id }
-  } }] })
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      { Sid = "AccountRequests", Effect = "Allow", Principal = "*", Action = "*", Resource = "*", Condition = { StringEquals = { "aws:PrincipalAccount" = data.aws_caller_identity.current.account_id } } }
+      ], each.key == "s3" && contains(var.interface_services, "ecr.dkr") ? [
+      { Sid = "ECRLayers", Effect = "Allow", Principal = "*", Action = "s3:GetObject", Resource = "arn:aws:s3:::prod-${data.aws_region.current.region}-starport-layer-bucket/*" }
+    ] : [])
+  })
 }
 resource "aws_vpc_endpoint" "interface" {
   for_each            = var.interface_services
@@ -2956,6 +2976,17 @@ run "nat_does_not_open_egress" {
   assert {
     condition     = length(aws_nat_gateway.this) == 2 && alltrue([for r in aws_security_group.workload.egress : try(length(r.cidr_blocks), 0) == 0])
     error_message = "Per-AZ NAT must not bypass workload egress restrictions."
+  }
+}
+
+run "ecr_layers_are_readable" {
+  command = plan
+  variables {
+    interface_services = ["ssm", "ssmmessages", "ecr.api", "ecr.dkr"]
+  }
+  assert {
+    condition     = anytrue([for s in jsondecode(aws_vpc_endpoint.gateway["s3"].policy).Statement : s.Sid == "ECRLayers" && s.Action == "s3:GetObject"])
+    error_message = "ECR pulls require the regional AWS-owned S3 image-layer bucket."
   }
 }
 ````
@@ -5687,6 +5718,25 @@ class Database(unittest.TestCase):
    with psycopg.connect(DSN) as c:return write(c,'primary',1,'concurrent',100)
   with ThreadPoolExecutor(max_workers=6) as e:self.assertEqual(sum(e.map(once,range(6))),1)
   with psycopg.connect(DSN) as c:self.assertEqual(c.execute('SELECT count(*) FROM ledger').fetchone()[0],1)
+````
+
+### [tests/test_secret_rotation.py](tests/test_secret_rotation.py)
+
+````python
+import json,os,unittest
+from unittest.mock import patch,MagicMock
+from psycopg.conninfo import conninfo_to_dict
+from application.db import SecretConnection
+class Rotation(unittest.TestCase):
+ def test_new_connections_fetch_current_secret(self):
+  client=MagicMock()
+  client.get_secret_value.side_effect=[{'SecretString':json.dumps({'username':'veriqta','password':'old-test-value'})},{'SecretString':json.dumps({'username':'veriqta','password':'new-test-value'})}]
+  with patch('application.db.secrets_client',return_value=client),patch('psycopg.Connection.connect',return_value=object()) as connect,patch.dict(os.environ,{'DB_SECRET_ARN':'test-secret'}):
+   SecretConnection.connect('host=db.example.invalid sslmode=verify-full')
+   SecretConnection.connect('host=db.example.invalid sslmode=verify-full')
+  self.assertEqual(client.get_secret_value.call_count,2)
+  self.assertEqual(conninfo_to_dict(connect.call_args_list[0].args[0])['password'],'old-test-value')
+  self.assertEqual(conninfo_to_dict(connect.call_args_list[1].args[0])['password'],'new-test-value')
 ````
 
 ### [workflows/pr-validation.yml](workflows/pr-validation.yml)
