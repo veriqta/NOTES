@@ -785,7 +785,7 @@ Use a separately protected approval repository with `approvers.json` and `approv
 }
 ```
 
-The digest binds approval to plan content; it is an application control, not a public checksum handoff file. The protected review job computes it from canonical JSON with sorted keys and compact separators. Approval timestamps and approver membership come from the trusted approval process, not fields submitted by an infrastructure PR.
+The digest binds approval to the exact reviewed plan content. The protected review job computes it from canonical JSON with sorted keys and compact separators. Approval timestamps and approver membership come from the trusted approval process, not fields submitted by an infrastructure PR.
 
 ```bash
 python scripts/governance.py .private/reviewed-plan.json \
