@@ -1,0 +1,35 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.database",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "after": {
+          "storage_encrypted": false,
+          "publicly_accessible": true,
+          "tags_all": {
+            "Owner": ""
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role_policy.admin",
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "policy": "{\"Statement\":[{\"Effect\":\"Allow\",\"Action\":\"*\",\"Resource\":\"*\"}]}"
+        }
+      }
+    }
+  ]
+}

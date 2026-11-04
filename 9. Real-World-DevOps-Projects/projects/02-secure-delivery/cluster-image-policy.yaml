@@ -1,0 +1,11 @@
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata: {name: veriqta-release}
+spec:
+  images:
+    - glob: 'ACCOUNT.dkr.ecr.REGION.amazonaws.com/veriqta**'
+  authorities:
+    - keyless:
+        identities:
+          - issuer: https://token.actions.githubusercontent.com
+            subject: https://github.com/ORGANIZATION/REPOSITORY/.github/workflows/release.yml@refs/heads/main

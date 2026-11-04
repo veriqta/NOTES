@@ -1,0 +1,93 @@
+# Teaching workflow. Install only in a separate approved lab repository.
+name: Veriqta signed release
+on:
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {contents: read, id-token: write}
+    outputs: {digest: '${{ steps.image.outputs.digest }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.BUILD_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        id: image
+        with:
+          context: .
+          file: application/Dockerfile
+          push: true
+          tags: ${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+          sbom: true
+          provenance: mode=max
+      - uses: anchore/scan-action@v6
+        with:
+          image: ${{ vars.ECR_REPOSITORY }}@${{ steps.image.outputs.digest }}
+          fail-build: true
+          severity-cutoff: high
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign the scanned immutable artifact
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY }}@${{ steps.image.outputs.digest }}
+        run: cosign sign --yes "$IMAGE"
+  verify:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: {contents: read, id-token: write}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.VERIFY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: sigstore/cosign-installer@v3
+      - name: Verify exact workflow identity
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY }}@${{ needs.build.outputs.digest }}
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/heads/main
+        run: cosign verify --certificate-identity "$IDENTITY" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$IMAGE"
+  promotion:
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+    environment: production-promotion
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: source}
+      - uses: actions/create-github-app-token@v1
+        id: gitops-token
+        with:
+          app-id: ${{ vars.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_PRIVATE_KEY }}
+          owner: ${{ vars.GITOPS_OWNER }}
+          repositories: ${{ vars.GITOPS_REPOSITORY_NAME }}
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.GITOPS_OWNER }}/${{ vars.GITOPS_REPOSITORY_NAME }}
+          ref: main
+          path: gitops
+          token: ${{ steps.gitops-token.outputs.token }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install PyYAML==6.0.2
+      - name: Change only the approved checkout image and release label
+        env:
+          IMAGE: ${{ vars.ECR_REPOSITORY }}@${{ needs.build.outputs.digest }}
+        run: python source/scripts/promote_gitops.py gitops/kubernetes/checkout-deployment.yaml "$IMAGE" "$GITHUB_SHA"
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          path: gitops
+          token: ${{ steps.gitops-token.outputs.token }}
+          base: main
+          branch: veriqta/promote-${{ github.sha }}
+          add-paths: kubernetes/checkout-deployment.yaml
+          commit-message: Promote verified Veriqta checkout artifact
+          title: Promote verified Veriqta checkout artifact
+          body: Immutable artifact passed the trusted build and independent signature verification; deployment follows protected GitOps review.

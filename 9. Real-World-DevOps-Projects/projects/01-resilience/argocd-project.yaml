@@ -1,0 +1,8 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata: {name: veriqta, namespace: argocd}
+spec:
+  sourceRepos: ['https://github.com/YOUR-ORGANIZATION/YOUR-LAB-GITOPS.git']
+  destinations: [{server: 'https://kubernetes.default.svc', namespace: veriqta}]
+  namespaceResourceWhitelist: [{group: '*', kind: '*'}]
+  clusterResourceWhitelist: [{group: '', kind: Namespace}]

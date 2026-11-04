@@ -1,0 +1,21 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.database",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "after": {
+          "storage_encrypted": true,
+          "publicly_accessible": false,
+          "tags_all": {
+            "Owner": "veriqta"
+          }
+        }
+      }
+    }
+  ]
+}

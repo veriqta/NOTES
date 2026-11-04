@@ -1,0 +1,8 @@
+# Replace only a retired foundation's main.tf after consumers/data resources can be removed.
+# Keep its provider/backend, account, Region, name and state unchanged.
+resource "aws_kms_key" "data" {
+ enable_key_rotation=true
+ deletion_window_in_days=30
+ lifecycle { prevent_destroy=true }
+}
+output "retained_data_key_arn" { value=aws_kms_key.data.arn }

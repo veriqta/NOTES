@@ -1,0 +1,12 @@
+{
+  "apiVersion": "v1",
+  "kind": "ConfigMap",
+  "metadata": {
+    "name": "veriqta-config",
+    "namespace": "veriqta"
+  },
+  "data": {
+    "DB_HOST": "REPLACE_FROM_FOUNDATION",
+    "DB_SECRET_ARN": "REPLACE_FROM_FOUNDATION"
+  }
+}

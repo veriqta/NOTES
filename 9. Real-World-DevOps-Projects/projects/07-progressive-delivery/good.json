@@ -1,0 +1,7 @@
+{
+  "requests": 1000,
+  "errors": 2,
+  "p95_seconds": 0.2,
+  "age_seconds": 10,
+  "schema_backward_compatible": true
+}

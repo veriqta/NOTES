@@ -10,3 +10,5 @@ Practical engineering handbooks with step-by-step projects, complete code, and o
 6. [The DevOps Side Project Playbook](6.%20DevOps-Side-Project-Playbook/)
 7. [AI for DevOps Engineers](7.%20AI-for-DevOps-Engineers/)
 8. [10 Terraform Projects for Your Portfolio](8.%20Terraform-Portfolio-Projects/)
+
+9. [10 Real-World DevOps Projects You Can Build and Add to GitHub](9.%20Real-World-DevOps-Projects/)

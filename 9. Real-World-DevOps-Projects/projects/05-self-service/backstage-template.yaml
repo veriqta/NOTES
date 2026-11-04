@@ -1,0 +1,35 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata: {name: veriqta-service, title: Veriqta approved service}
+spec:
+  owner: group:default/veriqta-platform
+  type: service
+  parameters:
+    - title: Service identity
+      required: [name, owner]
+      properties:
+        name: {type: string, pattern: '^veriqta-[a-z][a-z0-9-]{1,30}$'}
+        owner: {type: string, enum: ['group:default/veriqta-platform','group:default/veriqta-payments']}
+  steps:
+    - id: fetch
+      name: Fetch approved skeleton
+      action: fetch:template
+      input:
+        url: ./skeleton
+        values: {name: '${{ parameters.name }}', owner: '${{ parameters.owner }}'}
+    - id: publish
+      name: Create service repository
+      action: publish:github
+      input:
+        repoUrl: github.com?owner=YOUR-ORGANIZATION&repo=${{ parameters.name }}
+        repoVisibility: private
+        defaultBranch: main
+    - id: register
+      name: Register ownership
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps.publish.output.repoContentsUrl }}
+        catalogInfoPath: /catalog-info.yaml
+  output:
+    links:
+      - {title: Service repository, url: '${{ steps.publish.output.remoteUrl }}'}

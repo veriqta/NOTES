@@ -1,0 +1,114 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: checkout
+  namespace: veriqta-release
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      serviceAccountName: veriqta-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: checkout
+        image: veriqta9-app:local
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: SERVICE_NAME
+          value: checkout
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: veriqta-config
+              key: DB_HOST
+        - name: DB_SECRET_ARN
+          valueFrom:
+            configMapKeyRef:
+              name: veriqta-config
+              key: DB_SECRET_ARN
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel.monitoring:4318
+        - name: RELEASE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['rollouts-pod-template-hash']
+        - name: PAYMENT_URL
+          value: http://payment.veriqta.svc:8080/pay
+        - name: INVENTORY_URL
+          value: http://inventory.veriqta.svc:8080/reserve
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: http
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: checkout
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: checkout
+  strategy:
+    canary:
+      stableService: checkout-stable
+      canaryService: checkout-canary
+      trafficRouting:
+        nginx:
+          stableIngress: checkout
+      steps:
+      - setWeight: 10
+      - pause:
+          duration: 60s
+      - analysis:
+          templates:
+          - templateName: checkout-slo
+          args:
+          - name: canary-hash
+            valueFrom:
+              podTemplateHashValue: Latest
+      - setWeight: 50
+      - pause: {}
+      - setWeight: 100

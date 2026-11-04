@@ -1,0 +1,40 @@
+{
+  "apiVersion": "monitoring.coreos.com/v1",
+  "kind": "PodMonitor",
+  "metadata": {
+    "name": "veriqta",
+    "namespace": "monitoring",
+    "labels": {
+      "release": "prometheus"
+    }
+  },
+  "spec": {
+    "namespaceSelector": {
+      "matchNames": [
+        "veriqta",
+        "veriqta-release"
+      ]
+    },
+    "selector": {
+      "matchExpressions": [
+        {
+          "key": "app",
+          "operator": "In",
+          "values": [
+            "gateway",
+            "checkout",
+            "payment",
+            "inventory"
+          ]
+        }
+      ]
+    },
+    "podMetricsEndpoints": [
+      {
+        "port": "http",
+        "path": "/metrics",
+        "interval": "5s"
+      }
+    ]
+  }
+}
